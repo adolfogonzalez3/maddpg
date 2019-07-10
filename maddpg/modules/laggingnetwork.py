@@ -1,5 +1,5 @@
 '''A module that contains the Policy class.'''
-
+from abc import abstractmethod
 from collections import namedtuple
 
 import sonnet as snt
@@ -23,21 +23,9 @@ class LaggingNetwork(snt.AbstractModule):
             self.target_network = snt.nets.MLP(node_sizes,
                                                name='target_function')
 
-    def predict(self, observation):
-        '''
-        Predict based on an observation.
-
-        :param observation: (tensorflow.Tensor) A tensorflow tensor.
-        '''
-        return self.running_network(observation)
-
-    def predict_target(self, observation):
-        '''
-        Predict based on an observation using the target network.
-
-        :param observation: (tensorflow.Tensor) A tensorflow tensor.
-        '''
-        return self.target_network(observation)
+    @abstractmethod
+    def _build(self, *args, **kwargs):
+        ...
 
     def update_target(self, polyak=1.0 - 1e-2):
         '''
@@ -49,18 +37,6 @@ class LaggingNetwork(snt.AbstractModule):
                       for rvar, tvar in zip(rvars, tvars)]
         return tf.group(*expression, name='update_target')
 
-    def _build(self, observation):
-        '''
-        Build the policy and return a sampling of the action distribution.
-
-        :param observation: (tensorflow.Tensor) A tensorflow tensor.
-        '''
-        predict = self.predict(observation)
-        predict_target = self.predict_target(observation)
-        update_target = self.update_target()
-        return LaggingNetReturn(predict, predict_target, update_target)
-
     def get_trainable_variables(self):
         '''Retrieve the trainable variables of the policy.'''
-        return LaggingNetParams(self.running_network.trainable_variables,
-                                self.target_network.trainable_variables)
+        return self.running_network.trainable_variables

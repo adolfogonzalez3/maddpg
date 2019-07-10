@@ -2,13 +2,13 @@
 
 from collections import namedtuple
 
+import sonnet as snt
 import tensorflow as tf
 
 from maddpg.modules.laggingnetwork import LaggingNetwork
 
 CriticReturn = namedtuple('PolicyReturn', ['predict', 'predict_target',
                                            'update_target'])
-CriticParams = namedtuple('PolicyParams', ['running', 'target'])
 
 
 class Critic(LaggingNetwork):
@@ -16,10 +16,19 @@ class Critic(LaggingNetwork):
     A class for implementing a critic.
     '''
 
-    def __init__(self, observation_space, name='critic'):
-        self.observation_space = observation_space
-        super().__init__((64, 64, 1), name=name)
+    def __init__(self, observation_space, action_space, name='critic'):
+        '''
+        Create a critic.
 
+        :param observation_space: (gym.space) A space compatible with gym.
+        :param action_space: (gym.space) A space compatible with gym.
+        :param name: (str) The name of the critic.
+        '''
+        super().__init__((64, 64, 1), name=name)
+        self.observation_space = observation_space
+        self.action_space = action_space
+
+    @snt.reuse_variables
     def predict(self, observation, action):
         '''
         Predict an action based on an observation.
@@ -32,9 +41,12 @@ class Critic(LaggingNetwork):
                                            values that are acceptable to the
                                            observation space.
         '''
+        if isinstance(action, dict):
+            action = tf.concat(list(action.values()), -1)
         combined_obs_act = tf.concat([observation, action], -1)
         return self.running_network(combined_obs_act)
 
+    @snt.reuse_variables
     def predict_target(self, observation, action):
         '''
         Predict an action based on an observation using the target network.
@@ -47,6 +59,8 @@ class Critic(LaggingNetwork):
                                            values that are acceptable to the
                                            observation space.
         '''
+        if isinstance(action, dict):
+            action = tf.concat(list(action.values()), -1)
         combined_obs_act = tf.concat([observation, action], -1)
         return self.target_network(combined_obs_act)
 
@@ -66,8 +80,3 @@ class Critic(LaggingNetwork):
         predict_target = self.predict_target(observation, action)
         update_target = self.update_target()
         return CriticReturn(predict, predict_target, update_target)
-
-    def get_trainable_variables(self):
-        '''Retrieve the trainable variables of the policy.'''
-        return CriticParams(self.running_network.trainable_variables,
-                            self.target_network.trainable_variables)

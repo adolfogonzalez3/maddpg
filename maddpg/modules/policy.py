@@ -2,6 +2,8 @@
 
 from collections import namedtuple
 
+import sonnet as snt
+
 from maddpg.common.distributions import make_pdtype
 from maddpg.modules.laggingnetwork import LaggingNetwork
 
@@ -16,12 +18,20 @@ class Policy(LaggingNetwork):
     '''
 
     def __init__(self, observation_space, action_space, name='policy'):
+        '''
+        Create a policy.
+
+        :param observation_space: (gym.space) A space compatible with gym.
+        :param action_space: (gym.space) A space compatible with gym.
+        :param name: (str) The name of the policy.
+        '''
         self.distribution_type = make_pdtype(action_space)
         out_size = int(self.distribution_type.param_shape()[0])
+        super().__init__((64, 64, out_size), name=name)
         self.observation_space = observation_space
         self.action_space = action_space
-        super().__init__((64, 64, out_size), name=name)
 
+    @snt.reuse_variables
     def predict(self, observation):
         '''
         Predict an action based on an observation.
@@ -35,6 +45,7 @@ class Policy(LaggingNetwork):
         act_probability = self.distribution_type.pdfromflat(logits)
         return act_probability.sample()
 
+    @snt.reuse_variables
     def predict_target(self, observation):
         '''
         Predict an action based on an observation using the target network.
@@ -61,8 +72,3 @@ class Policy(LaggingNetwork):
         predict_target = self.predict_target(observation)
         update_target = self.update_target()
         return PolicyReturn(predict, predict_target, update_target)
-
-    def get_trainable_variables(self):
-        '''Retrieve the trainable variables of the policy.'''
-        return PolicyParams(self.running_network.trainable_variables,
-                            self.target_network.trainable_variables)
