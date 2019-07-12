@@ -2,14 +2,18 @@
 
 from collections import namedtuple
 
+import numpy as np
 import sonnet as snt
+import tensorflow as tf
 
+from gym.spaces import Box
+
+import maddpg.common.tf_util as U
 from maddpg.common.distributions import make_pdtype
 from maddpg.modules.laggingnetwork import LaggingNetwork
 
 PolicyReturn = namedtuple('PolicyReturn', ['predict', 'predict_target',
-                                           'update_target'])
-PolicyParams = namedtuple('PolicyParams', ['running', 'target'])
+                                           'update_target', 'entropy'])
 
 
 class Policy(LaggingNetwork):
@@ -31,7 +35,6 @@ class Policy(LaggingNetwork):
         self.observation_space = observation_space
         self.action_space = action_space
 
-    @snt.reuse_variables
     def predict(self, observation):
         '''
         Predict an action based on an observation.
@@ -41,11 +44,8 @@ class Policy(LaggingNetwork):
                                                 acceptable to the observation
                                                 space.
         '''
-        logits = self.running_network(observation)
-        act_probability = self.distribution_type.pdfromflat(logits)
-        return act_probability.sample()
+        return self(observation).predict
 
-    @snt.reuse_variables
     def predict_target(self, observation):
         '''
         Predict an action based on an observation using the target network.
@@ -55,9 +55,7 @@ class Policy(LaggingNetwork):
                                                 acceptable to the observation
                                                 space.
         '''
-        logits = self.target_network(observation)
-        act_probability = self.distribution_type.pdfromflat(logits)
-        return act_probability.sample()
+        return self(observation).predict_target
 
     def _build(self, observation):
         '''
@@ -68,7 +66,29 @@ class Policy(LaggingNetwork):
                                                 acceptable to the observation
                                                 space.
         '''
-        predict = self.predict(observation)
-        predict_target = self.predict_target(observation)
-        update_target = self.update_target()
-        return PolicyReturn(predict, predict_target, update_target)
+        predict, predict_target, update = super()._build(observation)
+        act_probability = self.distribution_type.pdfromflat(predict)
+        running_action = act_probability.sample()
+        entropy = act_probability.entropy()
+        #entropy = tf.reduce_mean(tf.square(act_probability.flatparam()),
+        #                         axis=-1, keepdims=True)
+        act_probability = self.distribution_type.pdfromflat(predict_target)
+        target_action = act_probability.sample()
+        if isinstance(self.action_space, Box):
+            low = np.min(self.action_space.low)
+            high = np.max(self.action_space.high)
+            running_action = tf.clip_by_value(running_action, low, high)
+            target_action = tf.clip_by_value(target_action, low, high)
+        return PolicyReturn(running_action, target_action, update, entropy)
+
+    @snt.reuse_variables
+    def create_optimizer(self, value, entropy=None, learning_rate=1e-3,
+                         optimizer=tf.train.AdamOptimizer,
+                         grad_norm_clipping=None):
+        '''Create an optimizer for the policy.'''
+        entropy = 0 if entropy is None else entropy
+        params = self.get_trainable_variables()
+        loss = -tf.reduce_mean(value) # + tf.reduce_mean(entropy) * 1e-3
+        optimizer = U.minimize_and_clip(optimizer(learning_rate), loss,
+                                        params, grad_norm_clipping)
+        return optimizer, loss

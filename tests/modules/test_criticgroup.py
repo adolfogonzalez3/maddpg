@@ -17,10 +17,12 @@ def test_build():
     actions = {str(i): tf.placeholder(tf.float32, shape=(None, 2))
                for i in range(10)}
     critic_group = critic_group_module(observations, actions)
-    assert len(critic_group) == 3
-    for _, (predict, predict_target, update) in zip_map(*critic_group):
-        assert predict.shape.as_list() == [None, 1]
-        assert predict_target.shape.as_list() == [None, 1]
+    assert len(critic_group) == 4
+    for value in critic_group.values.values():
+        assert value.shape.as_list() == [None, 1]
+    for target_value in critic_group.target_values.values():
+        assert target_value.shape.as_list() == [None, 1]
+    for update in critic_group.update_target.values():
         assert isinstance(update, tf.Operation)
 
 

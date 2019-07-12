@@ -15,10 +15,12 @@ def test_build():
     observations = {str(i): tf.placeholder(tf.float32, shape=(None, 4))
                     for i in range(10)}
     policy_group = policy_group_module(observations)
-    assert len(policy_group) == 3
-    for _, (predict, predict_target, update) in zip_map(*policy_group):
-        assert predict.shape.as_list() == [None, 2]
-        assert predict_target.shape.as_list() == [None, 2]
+    assert len(policy_group) == 4
+    for action in policy_group.actions.values():
+        assert action.shape.as_list() == [None, 2]
+    for target_action in policy_group.target_actions.values():
+        assert target_action.shape.as_list() == [None, 2]
+    for update in policy_group.update_target.values():
         assert isinstance(update, tf.Operation)
 
 

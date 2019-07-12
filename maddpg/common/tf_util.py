@@ -3,23 +3,45 @@ import numpy as np
 import os
 import tensorflow as tf
 
+
+def mse(value, axis=None, keepdims=False):
+    axis = axis if axis is None else [axis]
+    return tf.reduce_mean(tf.square(value), axis=axis, keep_dims=keepdims)
+
+
 def sum(x, axis=None, keepdims=False):
-    return tf.reduce_sum(x, axis=None if axis is None else [axis], keep_dims = keepdims)
+    return tf.reduce_sum(x, axis=None if axis is None else [axis], keep_dims=keepdims)
+
+
 def mean(x, axis=None, keepdims=False):
-    return tf.reduce_mean(x, axis=None if axis is None else [axis], keep_dims = keepdims)
+    return tf.reduce_mean(x, axis=None if axis is None else [axis], keep_dims=keepdims)
+
+
 def var(x, axis=None, keepdims=False):
     meanx = mean(x, axis=axis, keepdims=keepdims)
     return mean(tf.square(x - meanx), axis=axis, keepdims=keepdims)
+
+
 def std(x, axis=None, keepdims=False):
     return tf.sqrt(var(x, axis=axis, keepdims=keepdims))
+
+
 def max(x, axis=None, keepdims=False):
-    return tf.reduce_max(x, axis=None if axis is None else [axis], keep_dims = keepdims)
+    return tf.reduce_max(x, axis=None if axis is None else [axis], keep_dims=keepdims)
+
+
 def min(x, axis=None, keepdims=False):
-    return tf.reduce_min(x, axis=None if axis is None else [axis], keep_dims = keepdims)
+    return tf.reduce_min(x, axis=None if axis is None else [axis], keep_dims=keepdims)
+
+
 def concatenate(arrs, axis=0):
     return tf.concat(axis=axis, values=arrs)
+
+
 def argmax(x, axis=None):
     return tf.argmax(x, axis=axis)
+
+
 def softmax(x, axis=None):
     return tf.nn.softmax(x, axis=axis)
 
@@ -27,6 +49,9 @@ def softmax(x, axis=None):
 # Misc
 # ================================================================
 
+def concat_map(dictionary, axis=-1):
+    _, tensors = list(zip(*sorted(dictionary.items(), key=lambda x: x[0])))
+    return tf.concat(tensors, axis)
 
 def is_placeholder(x):
     return type(x) is tf.Tensor and len(x.op.inputs) == 0
@@ -81,7 +106,8 @@ class BatchInput(PlacholderTfInput):
         name: str
             name of the underlying placeholder
         """
-        super().__init__(tf.placeholder(dtype, [None] + list(shape), name=name))
+        super().__init__(tf.placeholder(
+            dtype, [None] + list(shape), name=name))
 
 
 class Uint8Input(PlacholderTfInput):
@@ -99,7 +125,8 @@ class Uint8Input(PlacholderTfInput):
             name of the underlying placeholder
         """
 
-        super().__init__(tf.placeholder(tf.uint8, [None] + list(shape), name=name))
+        super().__init__(tf.placeholder(
+            tf.uint8, [None] + list(shape), name=name))
         self._shape = shape
         self._output = tf.cast(super().get(), tf.float32) / 255.0
 
@@ -138,14 +165,18 @@ def minimize_and_clip(optimizer, objective, var_list, clip_val=10):
     """Minimized `objective` using `optimizer` w.r.t. variables in
     `var_list` while ensure the norm of the gradients for each
     variable is clipped to `clip_val`
-    """    
+    """
     if clip_val is None:
-        return optimizer.minimize(objective, var_list=var_list)
+        gradients = optimizer.compute_gradients(objective, var_list=var_list)
+        #with tf.control_dependencies([tf.print(*gradients)]):
+        return optimizer.apply_gradients(gradients)
+        #return optimizer.minimize(objective, var_list=var_list)
     else:
         gradients = optimizer.compute_gradients(objective, var_list=var_list)
         for i, (grad, var) in enumerate(gradients):
             if grad is not None:
                 gradients[i] = (tf.clip_by_norm(grad, clip_val), var)
+        #with tf.control_dependencies([tf.print(*gradients)]):
         return optimizer.apply_gradients(gradients)
 
 
@@ -289,7 +320,8 @@ class _Function(object):
     def __init__(self, inputs, outputs, updates, givens, check_nan=False):
         for inpt in inputs:
             if not issubclass(type(inpt), TfInput):
-                assert len(inpt.op.inputs) == 0, "inputs should all be placeholders of rl_algs.common.TfInput"
+                assert len(
+                    inpt.op.inputs) == 0, "inputs should all be placeholders of rl_algs.common.TfInput"
         self.inputs = inputs
         updates = updates or []
         self.update_group = tf.group(*updates)
@@ -315,17 +347,20 @@ class _Function(object):
             inpt_name = inpt.name.split(':')[0]
             inpt_name = inpt_name.split('/')[-1]
             assert inpt_name not in kwargs_passed_inpt_names, \
-                "this function has two arguments with the same name \"{}\", so kwargs cannot be used.".format(inpt_name)
+                "this function has two arguments with the same name \"{}\", so kwargs cannot be used.".format(
+                    inpt_name)
             if inpt_name in kwargs:
                 kwargs_passed_inpt_names.add(inpt_name)
                 self._feed_input(feed_dict, inpt, kwargs.pop(inpt_name))
             else:
                 assert inpt in self.givens, "Missing argument " + inpt_name
-        assert len(kwargs) == 0, "Function got extra arguments " + str(list(kwargs.keys()))
+        assert len(kwargs) == 0, "Function got extra arguments " + \
+            str(list(kwargs.keys()))
         # Update feed dict with givens.
         for inpt in self.givens:
             feed_dict[inpt] = feed_dict.get(inpt, self.givens[inpt])
-        results = get_session().run(self.outputs_update, feed_dict=feed_dict)[:-1]
+        results = get_session().run(self.outputs_update,
+                                    feed_dict=feed_dict)[:-1]
         if self.check_nan:
             if any(np.isnan(r).any() for r in results):
                 raise RuntimeError("Nan detected")
