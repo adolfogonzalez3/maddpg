@@ -49,9 +49,11 @@ def softmax(x, axis=None):
 # Misc
 # ================================================================
 
+
 def concat_map(dictionary, axis=-1):
     _, tensors = list(zip(*sorted(dictionary.items(), key=lambda x: x[0])))
     return tf.concat(tensors, axis)
+
 
 def is_placeholder(x):
     return type(x) is tf.Tensor and len(x.op.inputs) == 0
@@ -168,15 +170,15 @@ def minimize_and_clip(optimizer, objective, var_list, clip_val=10):
     """
     if clip_val is None:
         gradients = optimizer.compute_gradients(objective, var_list=var_list)
-        #with tf.control_dependencies([tf.print(*gradients)]):
+        # with tf.control_dependencies([tf.print(*gradients)]):
         return optimizer.apply_gradients(gradients)
-        #return optimizer.minimize(objective, var_list=var_list)
+        # return optimizer.minimize(objective, var_list=var_list)
     else:
         gradients = optimizer.compute_gradients(objective, var_list=var_list)
         for i, (grad, var) in enumerate(gradients):
             if grad is not None:
                 gradients[i] = (tf.clip_by_norm(grad, clip_val), var)
-        #with tf.control_dependencies([tf.print(*gradients)]):
+        # with tf.control_dependencies([tf.print(*gradients)]):
         return optimizer.apply_gradients(gradients)
 
 
