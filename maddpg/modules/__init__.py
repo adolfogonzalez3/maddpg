@@ -5,4 +5,5 @@ from maddpg.modules.policy import Policy
 from maddpg.modules.critic import Critic
 from maddpg.modules.policygroup import PolicyGroup
 from maddpg.modules.criticgroup import CriticGroup
-from maddpg.modules.maddpgmodule import MaddpgModule
+from maddpg.modules.maddpgmodule import MaddpgModule, MaddpgModuleInference
+from maddpg.modules.matd3module import MaTD3Module

@@ -37,12 +37,13 @@ class LaggingNetwork(snt.AbstractModule):
         '''
         Update the target network.
         '''
-        polyak = 1.0 - 1e-2 if polyak is None else polyak
+        polyak = 1.0 - 1e-3 if polyak is None else polyak
         rvars = self.running_network.trainable_variables
         rvars = sorted(rvars, key=lambda v: v.name)
         tvars = self.target_network.trainable_variables
         tvars = sorted(tvars, key=lambda v: v.name)
-        expression = [tvar.assign(polyak * tvar + (1.0-polyak)*rvar)
+        expression = [tvar.assign(polyak * tvar + (1.0-polyak)*rvar,
+                                  use_locking=True)
                       for rvar, tvar in zip(rvars, tvars)]
         return tf.group(*expression, name='update_target')
 

@@ -5,25 +5,26 @@ from collections import namedtuple
 import sonnet as snt
 import tensorflow as tf
 
-import maddpg.common.tf_util as U
+
 from maddpg.modules import Policy, Group
 from maddpg.common.utils_common import zip_map
 
 PolicyGroupFunc = namedtuple('PolicyGroupFunc', ['policies', 'actions',
                                                  'target_actions',
                                                  'update_target',
-                                                 'entropy'])
+                                                 'entropy',
+                                                 'noisy_target'])
 
 
 class PolicyGroup(Group):
     '''A class for grouping policies.'''
 
     def __init__(self, observation_spaces, action_spaces, shared=False,
-                 name=None):
+                 hyperparameters=None, name=None):
         name = 'policy_group' if name is None else name
+        self.hyperparameters = hyperparameters if hyperparameters else {}
         self.shared = next(iter(observation_spaces.keys())) if shared else None
         if shared:
-            # name = next(iter(observation_spaces.keys()))
             shared_obs_space = observation_spaces[self.shared]
             shared_act_space = action_spaces[self.shared]
             shared_policy = Policy(shared_obs_space, shared_act_space,
@@ -55,15 +56,17 @@ class PolicyGroup(Group):
             length = len(observations)
             observations = tf.concat(observations, 0)
             policy = self.group[self.shared](observations)
-            print('PolicyGroup:', policy.predict.shape, policy.entropy.shape)
             policies = {name: policy for name in names}
             actions = tf.split(policy.predict, length)
             target_actions = tf.split(policy.predict_target, length)
             entropy = tf.split(policy.entropy, length)
+            noisy_target = tf.split(policy.noisy_target, length)
             actions = {name: action for name, action in zip(names, actions)}
             target_actions = {name: action
                               for name, action in zip(names, target_actions)}
             entropy = {name: ent for name, ent in zip(names, entropy)}
+            noisy_target = {name: target
+                            for name, target in zip(names, noisy_target)}
             update = policy.update_target
         else:
             policies = {name: policy(obs) for name, (policy, obs) in
@@ -71,6 +74,7 @@ class PolicyGroup(Group):
             actions = {}
             target_actions = {}
             entropy = {}
+            noisy_target = {}
             update = []
             policies = {name: policy(obs) for name, (policy, obs) in
                         zip_map(self.group, observations)}
@@ -78,10 +82,11 @@ class PolicyGroup(Group):
                 actions[name] = policy.predict
                 target_actions[name] = policy.predict_target
                 entropy[name] = policy.entropy
+                noisy_target[name] = policy.noisy_target
                 update.append(policy.update_target)
             update = tf.group(*update)
         return PolicyGroupFunc(policies, actions, target_actions, update,
-                               entropy)
+                               entropy, noisy_target)
 
     def build_policies(self, observations):
         '''
@@ -120,20 +125,22 @@ class PolicyGroup(Group):
         phd = {name: phd for name in policies}
         return phd, action_trains
 
-    def create_optimizers(self, values, entropy):
+    def create_optimizers(self, values):
         '''Create optimizers from the group.'''
         losses = {}
         opts = {}
+        learning_rate = self.hyperparameters.get('learning_rate', 1e-4)
         if self.shared:
             policy = self.group[self.shared]
             values = values[self.shared]
-            ent = entropy[self.shared]
-            opts, loss = policy.create_optimizer(values, ent)
+            opts, loss = policy.create_optimizer(
+                values, learning_rate=learning_rate
+            )
             losses = {name: loss for name in self.group}
         else:
-            for name, (policy, value, ent) in zip_map(self.group, values,
-                                                      entropy):
-                opts[name], losses[name] = policy.create_optimizer(value,
-                                                                   ent)
+            for name, (policy, value) in zip_map(self.group, values):
+                opts[name], losses[name] = policy.create_optimizer(
+                    value, learning_rate=learning_rate
+                )
             opts = tf.group(*list(opts.values()))
         return opts, losses

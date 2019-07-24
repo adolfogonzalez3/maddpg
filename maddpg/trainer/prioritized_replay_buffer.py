@@ -28,14 +28,16 @@ class SumTree:
         # self.tree = np.zeros(2 * capacity - 1, dtype=np.float64)
         size = 2 ** (ceil(log2(capacity)) + 1) - 1
         self.parent_nodes = 2 ** ceil(log2(capacity)) - 1
-        self.tree = np.zeros(size, dtype=np.float64)
+        #self.tree = np.zeros(size, dtype=np.float64)
+        self.tree = [0]*size
         # [--------------Parent nodes-------------]
         #             size: capacity - 1
         # [-------leaves to recode priority-------]
         #             size: capacity
         self.dirty = []
         self.values = []
-        self.data = np.zeros(capacity, dtype=object)  # for all transitions
+        #self.data = np.zeros(capacity, dtype=object)  # for all transitions
+        self.data = [None]*capacity
         # [--------------data frame-------------]
         #             size: capacity
         self.data_pointer = 0
@@ -154,9 +156,10 @@ class PrioritizedReplayMemory:  # stored as ( s, a, r, s_ ) in SumTree
 
     def add(self, obs_t, action, reward, obs_tp1, done):
         data = (obs_t, action, reward, obs_tp1, done)
-        max_p = np.max(self.tree.tree[-self.tree.parent_nodes:])
-        if max_p == 0:
-            max_p = self.abs_err_upper
+        max_p = 1e6
+        #max_p = np.max(self.tree.tree[-self.tree.parent_nodes:])
+        #if max_p == 0:
+        #    max_p = self.abs_err_upper
         self.tree.add(max_p, data)   # set the max p for new p
 
     def sample(self, n):

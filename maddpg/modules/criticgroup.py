@@ -16,11 +16,11 @@ class CriticGroup(Group):
     '''A class for grouping critics.'''
 
     def __init__(self, observation_spaces, action_spaces, shared=False,
-                 name=None):
+                 hyperparameters=None, name=None):
         name = 'critic_group' if name is None else name
+        self.hyperparameters = hyperparameters if hyperparameters else {}
         self.shared = next(iter(observation_spaces.keys())) if shared else None
         if shared:
-            #name = next(iter(observation_spaces.keys()))
             obs_space = observation_spaces[self.shared]
             act_space = action_spaces[self.shared]
             shared_critic = Critic(obs_space, act_space, name='shared_critic')
@@ -87,15 +87,20 @@ class CriticGroup(Group):
         '''Create optimizers from the group.'''
         losses = {}
         opts = {}
+        learning_rate = self.hyperparameters.get('learning_rate', 1e-4)
         if self.shared:
             critic = self.group[self.shared]
             values = values[self.shared]
             qvalues = qvalues[self.shared]
-            opts, loss = critic.create_optimizer(values, qvalues)
+            opts, loss = critic.create_optimizer(
+                values, qvalues, learning_rate=learning_rate
+            )
             losses = {name: loss for name in self.group}
         else:
             for name, (critic, value, Q) in zip_map(self.group, values,
                                                     qvalues):
-                opts[name], losses[name] = critic.create_optimizer(value, Q)
+                opts[name], losses[name] = critic.create_optimizer(
+                    value, Q, learning_rate=learning_rate
+                )
             opts = tf.group(*list(opts.values()))
         return opts, losses

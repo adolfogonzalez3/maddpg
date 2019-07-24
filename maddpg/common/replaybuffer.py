@@ -1,10 +1,16 @@
-import numpy as np
+
 import random
+from collections import defaultdict
+
+import numpy as np
+
+from maddpg.common.utils_common import zip_map
 
 
 class ReplayBuffer(object):
     def __init__(self, size):
         """Create Prioritized Replay buffer.
+
         Parameters
         ----------
         size: int
@@ -32,16 +38,21 @@ class ReplayBuffer(object):
         self._next_idx = (self._next_idx + 1) % self._maxsize
 
     def _encode_sample(self, idxes):
-        obses_t, actions, rewards, obses_tp1, dones = [], [], [], [], []
+        obses_t = defaultdict(list)
+        actions = defaultdict(list)
+        rewards = defaultdict(list)
+        obses_tp1 = defaultdict(list)
+        dones = defaultdict(list)
         for i in idxes:
             data = self._storage[i]
             obs_t, action, reward, obs_tp1, done = data
-            obses_t.append(np.array(obs_t, copy=False))
-            actions.append(np.array(action, copy=False))
-            rewards.append(reward)
-            obses_tp1.append(np.array(obs_tp1, copy=False))
-            dones.append(done)
-        return np.array(obses_t), np.array(actions), np.array(rewards), np.array(obses_tp1), np.array(dones)
+            for key, (obs_t, action, reward, obs_tp1, done) in zip_map(*data):
+                obses_t[key].append(obs_t)
+                actions[key].append(action)
+                rewards[key].append(reward)
+                obses_tp1[key].append(obs_tp1)
+                dones[key].append(done)
+        return obses_t, actions, rewards, obses_tp1, dones
 
     def make_index(self, batch_size):
         return [random.randint(0, len(self._storage) - 1) for _ in range(batch_size)]
@@ -57,10 +68,12 @@ class ReplayBuffer(object):
 
     def sample(self, batch_size):
         """Sample a batch of experiences.
+
         Parameters
         ----------
         batch_size: int
             How many transitions to sample.
+
         Returns
         -------
         obs_batch: np.array

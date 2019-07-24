@@ -1,9 +1,20 @@
 '''A module that contains utilites commonly used throughout the library.'''
 
-from collections import ChainMap, defaultdict
+from collections import defaultdict, namedtuple
 
+import numpy as np
 import tensorflow as tf
-from gym.spaces import Box, Discrete
+from tqdm import tqdm
+from gym.spaces import Box, Discrete, Dict
+
+# Logging
+
+
+def print_tqdm(*args):
+    '''Print python-style using tqdm.'''
+    tqdm.write(' '.join(str(arg) for arg in args))
+
+# Map functions
 
 
 def zip_map(*args, keys=None):
@@ -19,6 +30,62 @@ def zip_map(*args, keys=None):
     keys = args[0].keys() if keys is None else keys
     for key in keys:
         yield (key, [arg[key] for arg in args])
+
+
+def map_apply(dictionary, function):
+    '''
+    Apply a function to data in a dictionary.
+
+    :param dictionary: (dict) A dictionary containing data.
+    :param function: (callable) A callable that is applied to the data.
+    :return: (dict) A new dictionary with results of callable for each data.
+    '''
+    return {key: function(value) for key, value in dictionary.items()}
+
+
+def flatten_map(dictionary):
+    '''
+    Flatten a nested dict by prefixing a subdict's key with its parent.
+
+    '''
+    new_map = {}
+    for parent, child_dict in dictionary.items():
+        for child, value in child_dict.items():
+            new_map['{}_{}'.format(parent, child)] = value
+    return new_map
+
+
+def map_to_list(dictionary):
+    '''
+    Convert a map to a list sorted on the keys.
+
+    :param dictionary: (dict) A dictionary to turn into a list.
+    :return: (list) A list of values sorted by their keys.
+    '''
+    return list(zip(*sorted(dictionary.items(), key=lambda x: x[0])))[1]
+
+
+def unflatten_map(dictionary):
+    '''
+    Reverse prior flattening of a dictionary.
+    '''
+    new_map = defaultdict(dict)
+    for key, value in dictionary.items():
+        parent, child = key.split('_', maxsplit=1)
+        new_map[parent][child] = value
+    return dict(new_map)
+
+
+def map_to_batch(dictionary, shapes):
+    '''
+    Reshape data in a dictionary to correct batch shapes.
+
+    :param dictionary:
+    '''
+    return {key: np.reshape(value, (-1,) + shape)
+            for key, (value, shape) in zip_map(dictionary, shapes)}
+
+# Gym Environment functions
 
 
 def convert_spaces_to_placeholders(spaces, batch_dim=True):
@@ -42,27 +109,46 @@ def convert_spaces_to_placeholders(spaces, batch_dim=True):
     return placeholders
 
 
-def flatten_map(dictionary):
+def get_shape(space):
     '''
-    Flatten a nested dict by prefixing a subdict's key with its parent.
+    Get shape(s) from space.
 
+    :param space: (gym.spaces) A space whose type is one of the spaces in gym.
+    :return: ((int,...) or dict) Shapes returned depending on type of space.
     '''
-    new_map = {}
-    for parent, child_dict in dictionary.items():
-        for child, value in child_dict.items():
-            new_map['{}_{}'.format(parent, child)] = value
-    return new_map
+    if isinstance(space, Dict):
+        shape = {key: get_shape(subspace)
+                 for key, subspace in space.spaces.items()}
+    elif isinstance(space, Box):
+        shape = space.shape
+    else:
+        raise RuntimeError('Space type is not currently handled')
+    return shape
+
+# Tensorflow functions and classes
 
 
-def unflatten_map(dictionary):
+PlaceHolders = namedtuple('PlaceHolders', ['observations', 'actions',
+                                           'rewards', 'observations_next',
+                                           'dones'])
+
+
+def create_default(observation_spaces, action_spaces):
     '''
-    Reverse prior flattening of a dictionary.
+    Create default placeholders for the spaces passed.
+
+    :param observation_spaces: (gym.spaces.Dict) A Dict space.
+    :param action_spaces: (gym.spaces.Dict) A Dict space.
+    :return: (PlaceHolders) A namedtuple.
     '''
-    new_map = defaultdict(dict)
-    for key, value in dictionary.items():
-        parent, child = key.split('_')
-        new_map[parent][child] = value
-    return dict(new_map)
+    observations = convert_spaces_to_placeholders(observation_spaces)
+    actions = convert_spaces_to_placeholders(action_spaces)
+    rewards = {name: tf.placeholder(tf.float32, shape=(None, 1))
+               for name in observations}
+    observations_n = convert_spaces_to_placeholders(observation_spaces)
+    dones = {name: tf.placeholder(tf.float32, shape=(None, 1))
+             for name in observations}
+    return PlaceHolders(observations, actions, rewards, observations_n, dones)
 
 
 class TfFunction:

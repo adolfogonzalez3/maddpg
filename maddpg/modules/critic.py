@@ -71,21 +71,18 @@ class Critic(LaggingNetwork):
                                            values that are acceptable to the
                                            observation space.
         '''
-        if isinstance(action, dict):
-            _, actions = list(zip(*sorted(action.items(), key=lambda x: x[0])))
-            action = tf.concat(actions, -1)
         combined_obs_act = tf.concat([observation, action], -1)
         predict, predict_target, update = super()._build(combined_obs_act)
         return CriticReturn(predict, predict_target, update)
 
     @snt.reuse_variables
-    def create_optimizer(self, values, target_values, learning_rate=1e-2,
-                         optimizer=tf.train.AdamOptimizer,
+    def create_optimizer(self, values, target_values, learning_rate=1e-5,
+                         optimizer_fn=tf.train.AdamOptimizer,
                          grad_norm_clipping=None):
         '''Create an optimizer for the critic.'''
-        print('Values:', values.shape, target_values.shape)
         params = self.get_trainable_variables()
         loss = U.mse(values - target_values)
-        optimizer = U.minimize_and_clip(optimizer(learning_rate), loss, params,
+        optimizer = optimizer_fn(learning_rate, use_locking=True)
+        optimizer = U.minimize_and_clip(optimizer, loss, params,
                                         grad_norm_clipping)
-        return optimizer, tf.square(values - target_values)
+        return optimizer, loss

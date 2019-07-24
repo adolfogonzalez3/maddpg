@@ -29,11 +29,11 @@ class Group(snt.AbstractModule):
         return {name: member.get_trainable_variables()
                 for name, member in self.group.items()}
 
-    def update_targets(self):
+    def update_targets(self, polyak=None):
         '''Update target networks.'''
         if self.shared:
-            update = self.group[self.shared].update_target()
+            update = self.group[self.shared].update_target(polyak)
         else:
-            update = tf.group(*[member.update_target()
+            update = tf.group(*[member.update_target(polyak)
                                 for member in self.group.values()])
         return update
